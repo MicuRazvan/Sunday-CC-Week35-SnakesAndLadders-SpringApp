@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Snakes & Ladders</title>
+    <style>
+        :root {
+            --p1-color: #3498db;
+            --p2-color: #e67e22;
+            --ladder-color: #2ecc71;
+            --snake-color: #e74c3c;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        /* Main layout container */
+        .main-layout {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        /* Board Container */
+        .board-container {
+            position: relative;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(10, 60px);
+            grid-template-rows: repeat(10, 60px);
+            gap: 2px;
+            background-color: #444;
+            border: 5px solid #444;
+        }
+
+        .cell {
+            width: 60px; height: 60px; background: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; color: #bbb; position: relative;
+        }
+
+        #svg-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        /* Tokens - Sized to fit two in a cell */
+        .token {
+            width: 20px; height: 20px; border-radius: 50%;
+            position: absolute; border: 2px solid white;
+            z-index: 10; transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .p1-token { background: var(--p1-color); }
+        .p2-token { background: var(--p2-color); }
+
+        /* Legend Panel */
+        .legend {
+            width: 200px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 1px solid #dee2e6;
+        }
+        .legend h3 { margin-top: 0; font-size: 1.1em; color: #333; }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+            color: #555;
+        }
+        .symbol { width: 25px; height: 25px; margin-right: 15px; display: flex; justify-content: center; align-items: center; }
+        .sym-p1 { background: var(--p1-color); border-radius: 50%; width: 15px; height: 15px; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .sym-p2 { background: var(--p2-color); border-radius: 50%; width: 15px; height: 15px; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .sym-ladder { width: 20px; height: 4px; background: var(--ladder-color); border-radius: 2px; }
+        .sym-snake { width: 20px; height: 4px; border: 2px dashed var(--snake-color); }
+
+        .controls { margin-top: 25px; text-align: center; }
+        #status { font-weight: bold; margin-bottom: 15px; min-height: 24px; color: #2c3e50; }
+        button { padding: 12px 30px; cursor: pointer; background: #27ae60; color: white; border: none; border-radius: 5px; font-weight: bold; }
+        button:disabled { background: #bdc3c7; }
+
+        #setup { margin-bottom: 20px; }
+        input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-right: 5px; }
+    </style>
+</head>
+<body>
+
+<h1>Snakes & Ladders</h1>
+
+<div id="setup">
+    <input type="text" id="p1-name" value="Player 1">
+    <input type="text" id="p2-name" value="Player 2">
+    <button onclick="startGame()">Start Game</button>
+</div>
+
+<div class="main-layout" id="game-ui" style="display:none">
+    <!-- LEFT: Board -->
+    <div class="board-container" id="board-container">
+        <div id="status">Waiting...</div>
+        <div id="board"></div>
+        <svg id="svg-overlay"></svg>
+        <div class="controls">
+            <button id="roll-btn" onclick="handleRoll()">🎲 Roll Dice</button>
+            <button onclick="location.reload()" style="background:#95a5a6; margin-left: 10px;">Reset</button>
+        </div>
+    </div>
+
+    <!-- RIGHT: Legend -->
+    <div class="legend">
+        <h3>Map Legend</h3>
+        <div class="legend-item">
+            <div class="symbol"><div class="sym-p1"></div></div>
+            <span>Player 1 (Top)</span>
+        </div>
+        <div class="legend-item">
+            <div class="symbol"><div class="sym-p2"></div></div>
+            <span>Player 2 (Bottom)</span>
+        </div>
+        <div class="legend-item">
+            <div class="symbol"><div class="sym-ladder"></div></div>
+            <span>Ladder (Go Up)</span>
+        </div>
+        <div class="legend-item">
+            <div class="symbol"><div class="sym-snake"></div></div>
+            <span>Snake (Go Down)</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    let gameId = null;
+
+    function createBoardUI() {
+        const board = document.getElementById('board');
+        board.innerHTML = '';
+        // Zig-Zag logic
+        for (let row = 9; row >= 0; row--) {
+            for (let col = 0; col < 10; col++) {
+                let cellNum = (row % 2 !== 0) ? (row * 10) + (10 - col) : (row * 10) + (col + 1);
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.id = `cell-${cellNum}`;
+                cell.innerText = cellNum;
+                board.appendChild(cell);
+            }
+        }
+    }
+
+    async function startGame() {
+        const p1 = document.getElementById('p1-name').value;
+        const p2 = document.getElementById('p2-name').value;
+        const res = await fetch(`/api/game/start?p1=${p1}&p2=${p2}`, { method: 'POST' });
+        const state = await res.json();
+
+        gameId = state.gameId;
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('game-ui').style.display = 'flex';
+
+        createBoardUI();
+        drawDecorations(state.boardConfig);
+        render(state);
+    }
+
+    async function handleRoll() {
+        const res = await fetch(`/api/game/roll?gameId=${gameId}`, { method: 'POST' });
+        const state = await res.json();
+        render(state);
+    }
+
+    function drawDecorations(config) {
+        const svg = document.getElementById('svg-overlay');
+        svg.innerHTML = '';
+        for (const [start, end] of Object.entries(config)) {
+            const s = document.getElementById(`cell-${start}`);
+            const e = document.getElementById(`cell-${end}`);
+            if (s && e) {
+                const isLadder = parseInt(end) > parseInt(start);
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", s.offsetLeft + 30);
+                line.setAttribute("y1", s.offsetTop + 30);
+                line.setAttribute("x2", e.offsetLeft + 30);
+                line.setAttribute("y2", e.offsetTop + 30);
+                line.setAttribute("stroke", isLadder ? "#2ecc71" : "#e74c3c");
+                line.setAttribute("stroke-width", "5");
+                line.setAttribute("opacity", "0.5");
+                if (!isLadder) line.setAttribute("stroke-dasharray", "5,5");
+                svg.appendChild(line);
+            }
+        }
+    }
+
+    function render(state) {
+        document.getElementById('status').innerText = state.logMessage;
+
+        // Remove old tokens
+        document.querySelectorAll('.token').forEach(t => t.remove());
+
+        state.players.forEach((p, index) => {
+            const cell = document.getElementById(`cell-${p.position}`);
+            if (cell) {
+                const token = document.createElement('div');
+                token.className = `token ${index === 0 ? 'p1-token' : 'p2-token'}`;
+
+                // CALCULATE POSITION
+                // Cell width is 60. Token width is 20.
+                // Center X: (60 - 20) / 2 = 20px
+                const centerX = cell.offsetLeft + 20;
+
+                // Position P1 on upper half (5px from top)
+                // Position P2 on lower half (35px from top)
+                const centerY = (index === 0) ? cell.offsetTop + 7 : cell.offsetTop + 33;
+
+                token.style.left = centerX + "px";
+                token.style.top = centerY + "px";
+
+                document.getElementById('board-container').appendChild(token);
+            }
+        });
+
+        if (state.finished) document.getElementById('roll-btn').disabled = true;
+    }
+</script>
+</body>
+</html>
